@@ -11,7 +11,7 @@ import (
 )
 
 type HeartbeatMessage struct {
-	DeviceId string `json:"device_id"`
+	DeviceId int    `json:"device_id"`
 	Time     int64  `json:"time"`
 	Status   string `json:"status"`
 }
@@ -21,20 +21,21 @@ func (hbm *HeartbeatMessage) ToJson() ([]byte, error) {
 }
 
 func (hbm *HeartbeatMessage) PartitionKey() string {
-	return hbm.DeviceId
+	return strconv.Itoa(hbm.DeviceId)
 }
 
 type case1Device struct {
-	DeviceId            string  `json:"deviceId"`
+	DeviceId            int     `json:"deviceId"`
 	ProbabilityDown     float64 `json:"probabilityDown"`
 	ProbabilityLongDown float64 `json:"probabilityLongDown"`
 	LastUp              int64   `json:"lastUp"`
 	IsLongDown          bool    `json:"isLongDown"`
 	Quality             float64 `json:"quality"`
+	DebugEvents         bool    `json:"debug_events"`
 }
 
 func (cod *case1Device) String() string {
-	return fmt.Sprintf("deviceId: %s, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
+	return fmt.Sprintf("deviceId: %d, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
 		cod.DeviceId, cod.Quality, cod.ProbabilityDown, cod.ProbabilityLongDown, cod.LastUp, cod.IsLongDown)
 }
 
@@ -42,7 +43,9 @@ func (cod *case1Device) generate() Event {
 	now := time.Now().Unix()
 
 	if cod.LastUp == -1 {
-		log.Printf("%d: d %s first event", now, cod.DeviceId)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d first event", now, cod.DeviceId)
+		}
 		cod.LastUp = now
 		return &HeartbeatMessage{
 			Time:     now,
@@ -52,12 +55,16 @@ func (cod *case1Device) generate() Event {
 	}
 
 	if cod.IsLongDown && (now-cod.LastUp) <= 20*60 { // 20 minutes
-		log.Printf("%d: d %s is long down", now, cod.DeviceId)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d is long down", now, cod.DeviceId)
+		}
 		return nil
 	} else if cod.IsLongDown {
 		cod.IsLongDown = false
 		cod.LastUp = now
-		log.Printf("%d: d %s returns from long down", now, cod.DeviceId)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d returns from long down", now, cod.DeviceId)
+		}
 		return &HeartbeatMessage{
 			Time:     now,
 			DeviceId: cod.DeviceId,
@@ -76,7 +83,9 @@ func (cod *case1Device) generate() Event {
 		}
 
 		newNow := now - (10+rand.Int63n(10))*60
-		log.Printf("%d: d %s is late and %s", newNow, cod.DeviceId, status)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, status)
+		}
 
 		return &HeartbeatMessage{
 			Time:     newNow, // send the event back to 10-20 minutes
@@ -86,7 +95,9 @@ func (cod *case1Device) generate() Event {
 	}
 
 	if rand.Float64() < cod.ProbabilityDown { // going short down
-		log.Printf("%d: d %s short down", now, cod.DeviceId)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d short down", now, cod.DeviceId)
+		}
 		return &HeartbeatMessage{
 			Time:     now,
 			DeviceId: cod.DeviceId,
@@ -95,12 +106,16 @@ func (cod *case1Device) generate() Event {
 	}
 
 	if rand.Float64() < cod.ProbabilityLongDown { // going long down
-		log.Printf("%d: d %s going long down", now, cod.DeviceId)
+		if cod.DebugEvents {
+			log.Printf("%d: d %d going long down", now, cod.DeviceId)
+		}
 		cod.IsLongDown = true
 		return nil
 	}
 
-	log.Printf("%d: d %s is UP", now, cod.DeviceId)
+	if cod.DebugEvents {
+		log.Printf("%d: d %d is UP", now, cod.DeviceId)
+	}
 	return &HeartbeatMessage{
 		Time:     now,
 		DeviceId: cod.DeviceId,
@@ -108,7 +123,7 @@ func (cod *case1Device) generate() Event {
 	}
 }
 
-func generateCase1Devices(n int, stdDev float64) []device {
+func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
 	randomSource := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(randomSource)
 
@@ -134,12 +149,13 @@ func generateCase1Devices(n int, stdDev float64) []device {
 		}
 
 		device := &case1Device{
-			DeviceId:            strconv.Itoa(i),
+			DeviceId:            i,
 			ProbabilityDown:     downProbability,
 			ProbabilityLongDown: downProbabilityLong,
 			LastUp:              -1,
 			IsLongDown:          false,
 			Quality:             deviceQuality,
+			DebugEvents:         debugEvents,
 		}
 		log.Printf("Device %d: %v", i, device)
 

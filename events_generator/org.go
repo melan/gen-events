@@ -1,6 +1,8 @@
 package events_generator
 
-import "math/rand"
+import (
+	"math/rand"
+)
 
 type Event interface {
 	PartitionKey() string
@@ -37,6 +39,7 @@ type Org struct {
 	CaseId        Case
 	KinesisPrefix string
 	Devices       []device
+	DebugEvents   bool
 }
 
 func getNumberOfDevices(orgSize OrgSize) int {
@@ -54,13 +57,13 @@ func getNumberOfDevices(orgSize OrgSize) int {
 	return 0
 }
 
-func GenerateOrg(id string, size OrgSize, caseId Case) *Org {
+func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
 	var devices []device
 	var kinesisPrefix string
 
 	switch caseId {
 	case CaseOne:
-		devices = generateCase1Devices(getNumberOfDevices(size), 1)
+		devices = generateCase1Devices(getNumberOfDevices(size), 1, debugEvents)
 		kinesisPrefix = "heartbeat_message"
 		break
 	case CaseTwo:
@@ -87,11 +90,12 @@ func GenerateOrg(id string, size OrgSize, caseId Case) *Org {
 		CaseId:        caseId,
 		KinesisPrefix: kinesisPrefix,
 		Devices:       devices,
+		DebugEvents:   debugEvents,
 	}
 }
 
 func (org *Org) GenerateEvents() []Event {
-	events := make([]Event, len(org.Devices))
+	events := make([]Event, 0, len(org.Devices))
 
 	for _, d := range org.Devices {
 		if event := d.generate(); event != nil {
@@ -100,6 +104,24 @@ func (org *Org) GenerateEvents() []Event {
 	}
 
 	return events
+}
+
+func (org *Org) StreamName() string {
+	return org.KinesisPrefix + "_" + org.OrgId
+}
+func (org *Org) NumberOfStreamShards() int64 {
+	switch org.OrgSize {
+	case TinyOrg:
+		return 1
+	case SmallOrg:
+		return 1
+	case MediumOrg:
+		return 2
+	case LargeOrg:
+		return 13
+	default:
+		return 1
+	}
 }
 
 func GuessOrgSize() OrgSize {
