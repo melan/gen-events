@@ -75,22 +75,22 @@ func (cod *case1Device) generate() Event {
 	cod.LastUp = now
 
 	if chance := rand.Float64(); chance < .01 { // send late message
-		var status string
-		if chance < .005 {
-			status = "UP"
-		} else {
-			status = "DOWN"
-		}
-
 		newNow := now - (10+rand.Int63n(10))*60
-		if cod.DebugEvents {
-			log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, status)
-		}
+		if chance < .005 {
+			if cod.DebugEvents {
+				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "UP")
+			}
 
-		return &HeartbeatMessage{
-			Time:     newNow, // send the event back to 10-20 minutes
-			DeviceId: cod.DeviceId,
-			Status:   status,
+			return &HeartbeatMessage{
+				Time:     newNow, // send the event back to 10-20 minutes
+				DeviceId: cod.DeviceId,
+				Status:   "UP",
+			}
+		} else {
+			if cod.DebugEvents {
+				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "DOWN")
+			}
+			return nil
 		}
 	}
 
@@ -98,11 +98,7 @@ func (cod *case1Device) generate() Event {
 		if cod.DebugEvents {
 			log.Printf("%d: d %d short down", now, cod.DeviceId)
 		}
-		return &HeartbeatMessage{
-			Time:     now,
-			DeviceId: cod.DeviceId,
-			Status:   "DOWN",
-		}
+		return nil
 	}
 
 	if rand.Float64() < cod.ProbabilityLongDown { // going long down
