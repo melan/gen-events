@@ -32,11 +32,11 @@ type case3Device struct {
 	DebugEvents        bool   `json:"debug_events"`
 }
 
-func generateCase3Devices(n int, debugEvents bool) []device {
+func generateCase34Devices(n int, debugEvents bool) []*case3Device {
 	randomSource := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(randomSource)
 
-	devices := make([]device, 0, n)
+	devices := make([]*case3Device, 0, n)
 
 	for i := 0; i < n; i++ {
 		temp := r.Intn(121) - 10
@@ -55,6 +55,17 @@ func generateCase3Devices(n int, debugEvents bool) []device {
 		log.Printf("Device %d: %v", i, device)
 
 		devices = append(devices, device)
+	}
+
+	return devices
+}
+
+func generateCase3Devices(n int, debugEvents bool) []device {
+	case3Devices := generateCase34Devices(n, debugEvents)
+	devices := make([]device, 0, n)
+
+	for _, d := range case3Devices {
+		devices = append(devices, d)
 	}
 
 	return devices
