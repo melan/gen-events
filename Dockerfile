@@ -1,7 +1,6 @@
 FROM golang:1.11 as build
-RUN go get -u github.com/golang/dep/cmd/dep
-WORKDIR /go
-RUN go build github.com/golang/dep/cmd/dep
+
+RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
 ADD . /go/src/github.com/melan/gen-events/
 WORKDIR /go/src/github.com/melan/gen-events/
