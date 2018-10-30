@@ -2,6 +2,7 @@ package events_generator
 
 import (
 	"math/rand"
+	"strconv"
 )
 
 type Event interface {
@@ -10,8 +11,17 @@ type Event interface {
 }
 
 type device interface {
-	generate() Event
+	Generate() Event
 	String() string
+}
+
+type deviceMessage struct {
+	DeviceId int   `json:"device_id"`
+	Time     int64 `json:"time"`
+}
+
+func (m *deviceMessage) PartitionKey() string {
+	return strconv.Itoa(m.DeviceId)
 }
 
 type OrgSize string
@@ -65,20 +75,18 @@ func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
 	case CaseOne:
 		devices = generateCase1Devices(getNumberOfDevices(size), 1, debugEvents)
 		kinesisPrefix = "heartbeat_message"
-		break
 	case CaseTwo:
-		devices = make([]device, 0)
+		devices = generateCase2Devices(getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "structured_error_message"
-		break
 	case CaseThree:
-	case CaseFour:
-		devices = make([]device, 0)
+		devices = generateCase3Devices(getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "temperature_reading"
-		break
+	case CaseFour:
+		devices = generateCase3Devices(getNumberOfDevices(size), debugEvents)
+		kinesisPrefix = "temperature_reading"
 	case CaseFive:
 		devices = make([]device, 0)
 		kinesisPrefix = "data_change"
-		break
 	default:
 		devices = make([]device, 0)
 		kinesisPrefix = "unknown"
@@ -98,7 +106,7 @@ func (org *Org) GenerateEvents() []Event {
 	events := make([]Event, 0, len(org.Devices))
 
 	for _, d := range org.Devices {
-		if event := d.generate(); event != nil {
+		if event := d.Generate(); event != nil {
 			events = append(events, event)
 		}
 	}

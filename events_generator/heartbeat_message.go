@@ -6,22 +6,16 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"strconv"
 	"time"
 )
 
-type HeartbeatMessage struct {
-	DeviceId int    `json:"device_id"`
-	Time     int64  `json:"time"`
-	Status   string `json:"status"`
+type heartbeatMessage struct {
+	deviceMessage
+	Status string `json:"status"`
 }
 
-func (hbm *HeartbeatMessage) ToJson() ([]byte, error) {
+func (hbm *heartbeatMessage) ToJson() ([]byte, error) {
 	return json.Marshal(hbm)
-}
-
-func (hbm *HeartbeatMessage) PartitionKey() string {
-	return strconv.Itoa(hbm.DeviceId)
 }
 
 type case1Device struct {
@@ -32,91 +26,6 @@ type case1Device struct {
 	IsLongDown          bool    `json:"isLongDown"`
 	Quality             float64 `json:"quality"`
 	DebugEvents         bool    `json:"debug_events"`
-}
-
-func (cod *case1Device) String() string {
-	return fmt.Sprintf("deviceId: %d, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
-		cod.DeviceId, cod.Quality, cod.ProbabilityDown, cod.ProbabilityLongDown, cod.LastUp, cod.IsLongDown)
-}
-
-func (cod *case1Device) generate() Event {
-	now := time.Now().Unix()
-
-	if cod.LastUp == -1 {
-		if cod.DebugEvents {
-			log.Printf("%d: d %d first event", now, cod.DeviceId)
-		}
-		cod.LastUp = now
-		return &HeartbeatMessage{
-			Time:     now,
-			DeviceId: cod.DeviceId,
-			Status:   "UP",
-		}
-	}
-
-	if cod.IsLongDown && (now-cod.LastUp) <= 20*60 { // 20 minutes
-		if cod.DebugEvents {
-			log.Printf("%d: d %d is long down", now, cod.DeviceId)
-		}
-		return nil
-	} else if cod.IsLongDown {
-		cod.IsLongDown = false
-		cod.LastUp = now
-		if cod.DebugEvents {
-			log.Printf("%d: d %d returns from long down", now, cod.DeviceId)
-		}
-		return &HeartbeatMessage{
-			Time:     now,
-			DeviceId: cod.DeviceId,
-			Status:   "UP",
-		}
-	}
-
-	cod.LastUp = now
-
-	if chance := rand.Float64(); chance < .01 { // send late message
-		newNow := now - (10+rand.Int63n(10))*60
-		if chance < .005 {
-			if cod.DebugEvents {
-				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "UP")
-			}
-
-			return &HeartbeatMessage{
-				Time:     newNow, // send the event back to 10-20 minutes
-				DeviceId: cod.DeviceId,
-				Status:   "UP",
-			}
-		} else {
-			if cod.DebugEvents {
-				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "DOWN")
-			}
-			return nil
-		}
-	}
-
-	if rand.Float64() < cod.ProbabilityDown { // going short down
-		if cod.DebugEvents {
-			log.Printf("%d: d %d short down", now, cod.DeviceId)
-		}
-		return nil
-	}
-
-	if rand.Float64() < cod.ProbabilityLongDown { // going long down
-		if cod.DebugEvents {
-			log.Printf("%d: d %d going long down", now, cod.DeviceId)
-		}
-		cod.IsLongDown = true
-		return nil
-	}
-
-	if cod.DebugEvents {
-		log.Printf("%d: d %d is UP", now, cod.DeviceId)
-	}
-	return &HeartbeatMessage{
-		Time:     now,
-		DeviceId: cod.DeviceId,
-		Status:   "UP",
-	}
 }
 
 func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
@@ -159,4 +68,96 @@ func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
 	}
 
 	return devices
+}
+func (cod *case1Device) String() string {
+	return fmt.Sprintf("deviceId: %d, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
+		cod.DeviceId, cod.Quality, cod.ProbabilityDown, cod.ProbabilityLongDown, cod.LastUp, cod.IsLongDown)
+}
+
+func (cod *case1Device) Generate() Event {
+	now := time.Now().Unix()
+
+	if cod.LastUp == -1 {
+		if cod.DebugEvents {
+			log.Printf("%d: d %d first event", now, cod.DeviceId)
+		}
+		cod.LastUp = now
+		return &heartbeatMessage{
+			deviceMessage: deviceMessage{
+				DeviceId: cod.DeviceId,
+				Time:     now,
+			},
+			Status: "UP",
+		}
+	}
+
+	if cod.IsLongDown && (now-cod.LastUp) <= 20*60 { // 20 minutes
+		if cod.DebugEvents {
+			log.Printf("%d: d %d is long down", now, cod.DeviceId)
+		}
+		return nil
+	} else if cod.IsLongDown {
+		cod.IsLongDown = false
+		cod.LastUp = now
+		if cod.DebugEvents {
+			log.Printf("%d: d %d returns from long down", now, cod.DeviceId)
+		}
+		return &heartbeatMessage{
+			deviceMessage: deviceMessage{
+				DeviceId: cod.DeviceId,
+				Time:     now,
+			},
+			Status: "UP",
+		}
+	}
+
+	cod.LastUp = now
+
+	if chance := rand.Float64(); chance < .01 { // send late message
+		newNow := now - (10+rand.Int63n(10))*60
+		if chance < .005 {
+			if cod.DebugEvents {
+				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "UP")
+			}
+
+			return &heartbeatMessage{
+				deviceMessage: deviceMessage{
+					DeviceId: cod.DeviceId,
+					Time:     newNow, // send the event back to 10-20 minutes
+				},
+				Status: "UP",
+			}
+		} else {
+			if cod.DebugEvents {
+				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "DOWN")
+			}
+			return nil
+		}
+	}
+
+	if rand.Float64() < cod.ProbabilityDown { // going short down
+		if cod.DebugEvents {
+			log.Printf("%d: d %d short down", now, cod.DeviceId)
+		}
+		return nil
+	}
+
+	if rand.Float64() < cod.ProbabilityLongDown { // going long down
+		if cod.DebugEvents {
+			log.Printf("%d: d %d going long down", now, cod.DeviceId)
+		}
+		cod.IsLongDown = true
+		return nil
+	}
+
+	if cod.DebugEvents {
+		log.Printf("%d: d %d is UP", now, cod.DeviceId)
+	}
+	return &heartbeatMessage{
+		deviceMessage: deviceMessage{
+			DeviceId: cod.DeviceId,
+			Time:     now,
+		},
+		Status: "UP",
+	}
 }
