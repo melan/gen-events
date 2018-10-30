@@ -85,7 +85,7 @@ func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
 		devices = generateCase4Devices(getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "broken_temperature_reading"
 	case CaseFive:
-		devices = make([]device, 0)
+		devices = generateCase5(getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "data_change"
 	default:
 		devices = make([]device, 0)
