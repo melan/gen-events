@@ -1,8 +1,10 @@
 package output
 
 import (
+	"fmt"
 	"log"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -59,8 +61,45 @@ func NewKinesisEventsPublisher(client *kinesis.Kinesis, kinesisStream string, sh
 	return publisher
 }
 
-func (p *KinesisEventsPublisher) Init() {
-	p.getOrCreateStream(p.shards, p.tags)
+func (p *KinesisEventsPublisher) Init() error {
+	describeStreamInput := &kinesis.DescribeStreamInput{
+		StreamName: &p.kinesisStream,
+	}
+
+	for {
+		_, err := p.client.DescribeStream(describeStreamInput)
+		if err != nil {
+			awsErr, ok := err.(awserr.Error)
+			if !ok {
+				return fmt.Errorf("can't describe stream %s. Unexpected error: %s", p.kinesisStream, err.Error())
+			}
+
+			switch awsErr.Code() {
+			case "ResourceNotFoundException":
+				// create stream
+				p.createStream(p.shards)
+				for {
+					if err := p.client.WaitUntilStreamExists(describeStreamInput); err != nil {
+						log.Printf("something is wrong while waiting for stream %s/%d to be created, will check later. Error: %s",
+							p.kinesisStream, p.shards, err.Error())
+						time.Sleep(1 * time.Second)
+					}
+					p.setTags(p.tags)
+					break
+				}
+				continue
+			case "LimitExceededException":
+				time.Sleep(1 * time.Second)
+				continue
+			default:
+				// unknown error. panic
+				return fmt.Errorf("can't describe stream %s. Unexpected AWS error: %s", p.kinesisStream, err.Error())
+			}
+		}
+
+		// TODO: Add some kind of resize if more/less shards than needed
+		return nil
+	}
 }
 
 func (p *KinesisEventsPublisher) Publish(events []events_generator.Event) {
@@ -156,47 +195,6 @@ func (p *KinesisEventsPublisher) Publish(events []events_generator.Event) {
 	}
 }
 
-func (p *KinesisEventsPublisher) getOrCreateStream(shardsCount int64, tags map[string]*string) *kinesis.StreamDescription {
-	describeStreamInput := &kinesis.DescribeStreamInput{
-		StreamName: &p.kinesisStream,
-	}
-
-	for {
-		res, err := p.client.DescribeStream(describeStreamInput)
-		if err != nil {
-			awsErr, ok := err.(awserr.Error)
-			if !ok {
-				log.Panicf("can't describe stream %s. Unexpected error: %s", p.kinesisStream, err.Error())
-			}
-
-			switch awsErr.Code() {
-			case "ResourceNotFoundException":
-				// create stream
-				p.createStream(shardsCount)
-				for {
-					if err := p.client.WaitUntilStreamExists(describeStreamInput); err != nil {
-						log.Printf("something is wrong while waiting for stream %s/%d to be created, will check later. Error: %s",
-							p.kinesisStream, shardsCount, err.Error())
-						time.Sleep(1 * time.Second)
-					}
-					p.setTags(tags)
-					break
-				}
-				continue
-			case "LimitExceededException":
-				time.Sleep(1 * time.Second)
-				continue
-			default:
-				// unknown error. panic
-				log.Panicf("can't describe stream %s. Unexpected AWS error: %s", p.kinesisStream, err.Error())
-			}
-		}
-
-		// TODO: Add some kind of resize if more/less shards than needed
-		return res.StreamDescription
-	}
-}
-
 func (p *KinesisEventsPublisher) createStream(shardsCount int64) {
 	createRequest := &kinesis.CreateStreamInput{
 		StreamName: &p.kinesisStream,
@@ -281,7 +279,9 @@ func (p *KinesisEventsPublisher) setTags(tags map[string]*string) {
 
 }
 
-func (p *KinesisEventsPublisher) Cleanup() {
+func (p *KinesisEventsPublisher) Cleanup(g *sync.WaitGroup) {
+	defer g.Done()
+
 	trueTrue := true
 	deleteRequest := &kinesis.DeleteStreamInput{
 		EnforceConsumerDeletion: &trueTrue,

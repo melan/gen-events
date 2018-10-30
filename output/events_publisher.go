@@ -1,14 +1,16 @@
 package output
 
 import (
+	"sync"
+
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/melan/gen-events/events_generator"
 )
 
 type EventsPublisher interface {
-	Init()
+	Init() error
 	Publish(events []events_generator.Event)
-	Cleanup()
+	Cleanup(g *sync.WaitGroup)
 }
 
 type PublisherFactory func(org *events_generator.Org) EventsPublisher
