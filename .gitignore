@@ -1,2 +1,8 @@
 vendor
 gen-events
+!cmd/gen-events
+broken_temperature_reading_*
+data_change_*
+heartbeat_message_*
+structured_error_message_*
+temperature_reading_*
