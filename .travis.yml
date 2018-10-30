@@ -1,16 +1,16 @@
 sudo: required
 
-language: go
-
 services:
 - docker
 
-before_install:
-- docker build -t melan/gen-events .
-- docker run melan/gen-events --help
-
-deploy:
-  provider: script
-  script: bash docker_push
-  on:
-    branch: master
+jobs:
+  include:
+  - stage: build docker image
+    script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    - docker build -t gen-events .
+    - docker images
+    - docker tag gen-events $DOCKER_USERNAME/gen-events
+    - docker push $DOCKER_USERNAME/gen-events
+  - stage: test
+    script: docker run --rm $DOCKER_USERNAME/gen-events --help
