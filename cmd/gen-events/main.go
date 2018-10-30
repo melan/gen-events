@@ -163,8 +163,8 @@ func parseArgs() config {
 	a := kingpin.New(filepath.Base(os.Args[0]), "Generator of platform events")
 	a.HelpFlag.Short('h')
 
-	a.Flag("config-file", "Configuration file path.").
-		Default("gen-platform-events.yml").StringVar(&cfg.configFile)
+	//a.Flag("config-file", "Configuration file path.").
+	//	Default("gen-platform-events.yml").StringVar(&cfg.configFile)
 
 	a.Flag("listen-address", "Address where prometheus /metrics endpoint will be available").
 		Default(":8080").StringVar(&cfg.listenAddr)

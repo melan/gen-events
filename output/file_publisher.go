@@ -2,11 +2,9 @@ package output
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/melan/gen-events/events_generator"
@@ -19,10 +17,6 @@ type FileEventsPublisher struct {
 }
 
 func (p *FileEventsPublisher) Init() error {
-	if strings.Contains(p.fileName, "broken_temperature_reading") {
-		return fmt.Errorf("something is probably wrong with this file %s", p.fileName)
-	}
-
 	return nil
 }
 
