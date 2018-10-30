@@ -68,6 +68,7 @@ type Org struct {
 	OrgId         string
 	OrgSize       OrgSize
 	CaseId        Case
+	GlobalPrefix  string
 	KinesisPrefix string
 	Devices       []device
 	DebugEvents   bool
@@ -88,7 +89,7 @@ func getNumberOfDevices(orgSize OrgSize) int {
 	return 0
 }
 
-func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
+func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool, prefix string) *Org {
 	var devices []device
 	var kinesisPrefix string
 
@@ -119,6 +120,7 @@ func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
 		OrgId:         id,
 		OrgSize:       size,
 		CaseId:        caseId,
+		GlobalPrefix:  prefix,
 		KinesisPrefix: kinesisPrefix,
 		Devices:       devices,
 		DebugEvents:   debugEvents,
@@ -140,8 +142,9 @@ func (org *Org) GenerateEvents() []Event {
 }
 
 func (org *Org) StreamName() string {
-	return org.KinesisPrefix + "_" + org.OrgId
+	return org.GlobalPrefix + "_" + org.KinesisPrefix + "_" + org.OrgId
 }
+
 func (org *Org) NumberOfStreamShards() int64 {
 	switch org.OrgSize {
 	case TinyOrg:

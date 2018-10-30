@@ -12,16 +12,40 @@ import (
 	"github.com/melan/gen-events/events_generator"
 	"github.com/melan/gen-events/misc"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	generatedEventsCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "generated_events_count",
+			Help:      "Number of events received for posting",
+		},
+		[]string{"stream"})
+
+	serializedEventsCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "serialized_events_count",
+			Help:      "Number of events successfully serialized",
+		},
+		[]string{"stream"})
+
+	serializedEventsSize = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "serialized_events_size",
+			Help:      "Data volume of serialized events",
+		},
+		[]string{"stream"})
 )
 
 type KinesisEventsPublisher struct {
-	client                  *kinesis.Kinesis
-	kinesisStream           string
-	generatedEventsCounter  prometheus.Counter
-	serializedEventsCounter prometheus.Counter
-	serializedEventsSize    prometheus.Gauge
-	shards                  int64
-	tags                    map[string]*string
+	client        *kinesis.Kinesis
+	kinesisStream string
+	shards        int64
+	tags          map[string]*string
 }
 
 func NewKinesisEventsPublisher(client *kinesis.Kinesis, kinesisStream string, shards int64, tags map[string]*string) EventsPublisher {
@@ -30,33 +54,7 @@ func NewKinesisEventsPublisher(client *kinesis.Kinesis, kinesisStream string, sh
 		kinesisStream: kinesisStream,
 		shards:        shards,
 		tags:          tags,
-		generatedEventsCounter: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: misc.MetricsPrefix,
-				Name:      "generated_events_count",
-				Help:      "Number of events received for posting",
-			},
-			[]string{"stream"}).WithLabelValues(kinesisStream),
-
-		serializedEventsCounter: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: misc.MetricsPrefix,
-				Name:      "serialized_events_count",
-				Help:      "Number of events successfully serialized",
-			},
-			[]string{"stream"}).WithLabelValues(kinesisStream),
-
-		serializedEventsSize: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace: misc.MetricsPrefix,
-				Name:      "serialized_events_size",
-				Help:      "Data volume of serialized events",
-			},
-			[]string{"stream"}).WithLabelValues(kinesisStream),
 	}
-
-	prometheus.MustRegister(publisher.serializedEventsSize, publisher.generatedEventsCounter,
-		publisher.serializedEventsCounter)
 
 	return publisher
 }
@@ -84,7 +82,9 @@ func (p *KinesisEventsPublisher) Init() error {
 							p.kinesisStream, p.shards, err.Error())
 						time.Sleep(1 * time.Second)
 					}
-					p.setTags(p.tags)
+					if len(p.tags) > 0 {
+						p.setTags(p.tags)
+					}
 					break
 				}
 				continue
@@ -106,7 +106,7 @@ func (p *KinesisEventsPublisher) Publish(events []events_generator.Event) {
 	records := make([]*kinesis.PutRecordsRequestEntry, 0, len(events))
 	var totalSize int64
 
-	p.generatedEventsCounter.Add(float64(len(events)))
+	generatedEventsCounter.WithLabelValues(p.kinesisStream).Add(float64(len(events)))
 
 	for _, event := range events {
 		jsEvent, err := event.ToJson()
@@ -122,8 +122,8 @@ func (p *KinesisEventsPublisher) Publish(events []events_generator.Event) {
 		})
 	}
 
-	p.serializedEventsCounter.Add(float64(len(records)))
-	p.serializedEventsSize.Set(float64(totalSize))
+	serializedEventsCounter.WithLabelValues(p.kinesisStream).Add(float64(len(records)))
+	serializedEventsSize.WithLabelValues(p.kinesisStream).Set(float64(totalSize))
 
 	batches := make([][]*kinesis.PutRecordsRequestEntry, 0, len(records)/500)
 	batchSizeLimit := int(4.5 * math.Pow(2, 20)) // 4.5 MB

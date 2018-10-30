@@ -50,4 +50,12 @@ When the application is running it exposes Prometheus metrics endpoint on port `
 The port can be changed using `--listen-address` parameter
 
 To run the tool with output to AWS Kinesis please call it with `--output kinesis`, make sure to provide all AWS_* 
-environment variables to give it access to a user with full access to the AWS Kinesis.   
+environment variables to give it access to a user with full access to the AWS Kinesis:
+
+* AWS_ACCESS_KEY_ID
+* AWS_SECRET_ACCESS_KEY
+* AWS_SESSION_TOKEN
+* AWS_REGION
+
+If you want to run the tool on the same environment with somebody else - you can use `--prefix` to assign your own
+prefix to all your streams
