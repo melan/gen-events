@@ -7,6 +7,43 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/melan/gen-events/misc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	case2LongError = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case2_long_error_devices",
+		},
+		[]string{"orgId"})
+	case2NewError = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case2_new_error_devices",
+		},
+		[]string{"orgId"})
+	case2NewLongError = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case2_new_long_error_devices",
+		},
+		[]string{"orgId"})
+	case2NewShortError = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case2_new_short_error_devices",
+		},
+		[]string{"orgId"})
+	case2SameError = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case2_same_error_devices",
+		},
+		[]string{"orgId"})
 )
 
 type case2Error string
@@ -35,6 +72,7 @@ func (nem *noisyErrorMessage) ToJson() ([]byte, error) {
 }
 
 type case2Device struct {
+	OrgId                string
 	DeviceId             int
 	ProbabilityNewError  float64
 	ProbabilityLongError float64
@@ -44,10 +82,11 @@ type case2Device struct {
 	DebugEvents          bool
 }
 
-func generateCase2Devices(n int, debugEvents bool) []device {
+func generateCase2Devices(orgId string, n int, debugEvents bool) []device {
 	devices := make([]device, 0, n)
 	for i := 0; i < n; i++ {
 		device := &case2Device{
+			OrgId:                orgId,
 			DeviceId:             i,
 			ProbabilityNewError:  0.1,
 			ProbabilityLongError: 0.03,
@@ -56,7 +95,7 @@ func generateCase2Devices(n int, debugEvents bool) []device {
 			IsLongError:          false,
 			DebugEvents:          debugEvents,
 		}
-		log.Printf("Device: %d: %v", i, device)
+		log.Printf("Device: %s/%d: %v", orgId, i, device)
 
 		devices = append(devices, device)
 	}
@@ -65,8 +104,8 @@ func generateCase2Devices(n int, debugEvents bool) []device {
 }
 
 func (ctd *case2Device) String() string {
-	return fmt.Sprintf("deviceId: %d, probLongEror: %.02f, lastError: %s, lastErrChange: %d, debugEvents: %t",
-		ctd.DeviceId, ctd.ProbabilityLongError, ctd.LastError, ctd.LastErrorChange, ctd.DebugEvents)
+	return fmt.Sprintf("org: %s, deviceId: %d, probLongEror: %.02f, lastError: %s, lastErrChange: %d, debugEvents: %t",
+		ctd.OrgId, ctd.DeviceId, ctd.ProbabilityLongError, ctd.LastError, ctd.LastErrorChange, ctd.DebugEvents)
 }
 
 func (ctd *case2Device) Generate() Event {
@@ -74,8 +113,9 @@ func (ctd *case2Device) Generate() Event {
 
 	if ctd.IsLongError && (now-ctd.LastErrorChange) <= 7*60 { // keep long error for 7 minutes
 		if ctd.DebugEvents {
-			log.Printf("%d: d %d is in long error: %s", now, ctd.DeviceId, ctd.LastError)
+			log.Printf("%d: d %s/%d is in long error: %s", now, ctd.OrgId, ctd.DeviceId, ctd.LastError)
 		}
+		case2LongError.WithLabelValues(ctd.OrgId).Inc()
 		return &noisyErrorMessage{
 			deviceMessage: deviceMessage{
 				DeviceId: ctd.DeviceId,
@@ -88,6 +128,7 @@ func (ctd *case2Device) Generate() Event {
 
 	if rand.Float64() < ctd.ProbabilityNewError {
 		// switch to a new error
+		case2NewError.WithLabelValues(ctd.OrgId).Inc()
 
 		// get list of possible candidates
 		newErrors := make([]case2Error, 0, len(allCase2Errors)-1)
@@ -103,18 +144,20 @@ func (ctd *case2Device) Generate() Event {
 		ctd.LastError = newErrors[rand.Intn(len(newErrors))]
 
 		if ctd.DebugEvents {
-			log.Printf("%d: d %d new error is %s", now, ctd.DeviceId, ctd.LastError)
+			log.Printf("%d: d %s/%d new error is %s", now, ctd.OrgId, ctd.DeviceId, ctd.LastError)
 		}
 
 		if rand.Float64() < ctd.ProbabilityLongError {
 			if ctd.DebugEvents {
-				log.Printf("%d: d %d goes into long error cycle", now, ctd.DeviceId)
+				log.Printf("%d: d %s/%d goes into long error cycle", now, ctd.OrgId, ctd.DeviceId)
 			}
+			case2NewLongError.WithLabelValues(ctd.OrgId).Inc()
 			ctd.IsLongError = true
 		} else {
 			if ctd.DebugEvents {
-				log.Printf("%d: d %d goes into short error mode", now, ctd.DeviceId)
+				log.Printf("%d: d %s/%d goes into short error mode", now, ctd.OrgId, ctd.DeviceId)
 			}
+			case2NewShortError.WithLabelValues(ctd.OrgId).Inc()
 			ctd.IsLongError = false
 		}
 
@@ -129,9 +172,9 @@ func (ctd *case2Device) Generate() Event {
 	}
 
 	if ctd.DebugEvents {
-		log.Printf("%d: d %d remains at error %s. No message", now, ctd.DeviceId, ctd.LastError)
+		log.Printf("%d: d %s/%d remains at error %s. No message", now, ctd.OrgId, ctd.DeviceId, ctd.LastError)
 	}
-
+	case2SameError.WithLabelValues(ctd.OrgId).Inc()
 	return nil
 }
 

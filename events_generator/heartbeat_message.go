@@ -7,6 +7,55 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/melan/gen-events/misc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	case1NumberOfLongDown = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_long_down_devices",
+		},
+		[]string{"orgId"})
+	case1ReturnFromLongDown = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_returned_long_down_devices",
+		},
+		[]string{"orgId"})
+	case1EnteredFromLongDown = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_entered_long_down_devices",
+		},
+		[]string{"orgId"})
+	case1ShortDown = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_short_down_devices",
+		},
+		[]string{"orgId"})
+	case1LateDown = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_late_down_devices",
+		},
+		[]string{"orgId"})
+	case1LateUp = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_late_up_devices",
+		},
+		[]string{"orgId"})
+	case1Up = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case1_up_devices",
+		},
+		[]string{"orgId"})
 )
 
 type heartbeatMessage struct {
@@ -19,6 +68,7 @@ func (hbm *heartbeatMessage) ToJson() ([]byte, error) {
 }
 
 type case1Device struct {
+	OrgId               string  `json:"org_id"`
 	DeviceId            int     `json:"deviceId"`
 	ProbabilityDown     float64 `json:"probabilityDown"`
 	ProbabilityLongDown float64 `json:"probabilityLongDown"`
@@ -28,7 +78,7 @@ type case1Device struct {
 	DebugEvents         bool    `json:"debug_events"`
 }
 
-func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
+func generateCase1Devices(orgId string, n int, stdDev float64, debugEvents bool) []device {
 	randomSource := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(randomSource)
 
@@ -54,6 +104,7 @@ func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
 		}
 
 		device := &case1Device{
+			OrgId:               orgId,
 			DeviceId:            i,
 			ProbabilityDown:     downProbability,
 			ProbabilityLongDown: downProbabilityLong,
@@ -62,7 +113,7 @@ func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
 			Quality:             deviceQuality,
 			DebugEvents:         debugEvents,
 		}
-		log.Printf("Device %d: %v", i, device)
+		log.Printf("Device %s/%d: %v", orgId, i, device)
 
 		devices = append(devices, device)
 	}
@@ -70,8 +121,8 @@ func generateCase1Devices(n int, stdDev float64, debugEvents bool) []device {
 	return devices
 }
 func (cod *case1Device) String() string {
-	return fmt.Sprintf("deviceId: %d, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
-		cod.DeviceId, cod.Quality, cod.ProbabilityDown, cod.ProbabilityLongDown, cod.LastUp, cod.IsLongDown)
+	return fmt.Sprintf("org: %s, deviceId: %d, quality: %.02f, probDown: %.02f, probLongDown: %.02f, lastUp: %d, isLongDown: %t",
+		cod.OrgId, cod.DeviceId, cod.Quality, cod.ProbabilityDown, cod.ProbabilityLongDown, cod.LastUp, cod.IsLongDown)
 }
 
 func (cod *case1Device) Generate() Event {
@@ -79,9 +130,10 @@ func (cod *case1Device) Generate() Event {
 
 	if cod.LastUp == -1 {
 		if cod.DebugEvents {
-			log.Printf("%d: d %d first event", now, cod.DeviceId)
+			log.Printf("%d: d %s/%d first event", now, cod.OrgId, cod.DeviceId)
 		}
 		cod.LastUp = now
+		case1Up.WithLabelValues(cod.OrgId).Inc()
 		return &heartbeatMessage{
 			deviceMessage: deviceMessage{
 				DeviceId: cod.DeviceId,
@@ -93,15 +145,17 @@ func (cod *case1Device) Generate() Event {
 
 	if cod.IsLongDown && (now-cod.LastUp) <= 20*60 { // 20 minutes
 		if cod.DebugEvents {
-			log.Printf("%d: d %d is long down", now, cod.DeviceId)
+			log.Printf("%d: d %s/%d is long down", now, cod.OrgId, cod.DeviceId)
 		}
+		case1NumberOfLongDown.WithLabelValues(cod.OrgId).Inc()
 		return nil
 	} else if cod.IsLongDown {
 		cod.IsLongDown = false
 		cod.LastUp = now
 		if cod.DebugEvents {
-			log.Printf("%d: d %d returns from long down", now, cod.DeviceId)
+			log.Printf("%d: d %s/%d returns from long down", now, cod.OrgId, cod.DeviceId)
 		}
+		case1ReturnFromLongDown.WithLabelValues(cod.OrgId).Inc()
 		return &heartbeatMessage{
 			deviceMessage: deviceMessage{
 				DeviceId: cod.DeviceId,
@@ -117,8 +171,9 @@ func (cod *case1Device) Generate() Event {
 		newNow := now - (10+rand.Int63n(10))*60
 		if chance < .005 {
 			if cod.DebugEvents {
-				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "UP")
+				log.Printf("%d: d %s/%d is late and %s", newNow, cod.OrgId, cod.DeviceId, "UP")
 			}
+			case1LateUp.WithLabelValues(cod.OrgId).Inc()
 
 			return &heartbeatMessage{
 				deviceMessage: deviceMessage{
@@ -129,30 +184,34 @@ func (cod *case1Device) Generate() Event {
 			}
 		} else {
 			if cod.DebugEvents {
-				log.Printf("%d: d %d is late and %s", newNow, cod.DeviceId, "DOWN")
+				log.Printf("%d: d %s/%d is late and %s", newNow, cod.OrgId, cod.DeviceId, "DOWN")
 			}
+			case1LateDown.WithLabelValues(cod.OrgId).Inc()
 			return nil
 		}
 	}
 
 	if rand.Float64() < cod.ProbabilityDown { // going short down
 		if cod.DebugEvents {
-			log.Printf("%d: d %d short down", now, cod.DeviceId)
+			log.Printf("%d: d %s/%d short down", now, cod.OrgId, cod.DeviceId)
 		}
+		case1ShortDown.WithLabelValues(cod.OrgId).Inc()
 		return nil
 	}
 
 	if rand.Float64() < cod.ProbabilityLongDown { // going long down
 		if cod.DebugEvents {
-			log.Printf("%d: d %d going long down", now, cod.DeviceId)
+			log.Printf("%d: d %s/%d going long down", now, cod.OrgId, cod.DeviceId)
 		}
+		case1EnteredFromLongDown.WithLabelValues(cod.OrgId).Inc()
 		cod.IsLongDown = true
 		return nil
 	}
 
 	if cod.DebugEvents {
-		log.Printf("%d: d %d is UP", now, cod.DeviceId)
+		log.Printf("%d: d %s/%d is UP", now, cod.OrgId, cod.DeviceId)
 	}
+	case1Up.WithLabelValues(cod.OrgId).Inc()
 	return &heartbeatMessage{
 		deviceMessage: deviceMessage{
 			DeviceId: cod.DeviceId,

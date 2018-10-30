@@ -7,6 +7,24 @@ import (
 	"github.com/melan/gen-events/misc"
 	"github.com/melan/gen-events/output"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	cyclesCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "cycles_count",
+			Help:      "Count how many cycles of events generation was performed",
+		},
+		[]string{"orgSize", "caseId", "orgId"})
+	eventsCountGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "events_per_cycle",
+			Help:      "How many events were generated per cycle",
+		},
+		[]string{"orgSize", "caseId", "orgId"})
 )
 
 type Pipeline struct {
@@ -24,36 +42,17 @@ func NewPipeline(publisher output.EventsPublisher, org *events_generator.Org, in
 }
 
 func (p *Pipeline) Pump() {
-	labelsNames := []string{"orgSize", "caseId", "orgId"}
 	labels := prometheus.Labels{}
 	labels["orgSize"] = string(p.org.OrgSize)
 	labels["caseId"] = string(p.org.CaseId)
 	labels["orgId"] = p.org.OrgId
 
-	cyclesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: misc.MetricsPrefix,
-			Name:      "cycles_count",
-			Help:      "Count how many cycles of events generation was performed",
-		},
-		labelsNames).With(labels)
-
-	eventsCountGauge := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: misc.MetricsPrefix,
-			Name:      "events_per_cycle",
-			Help:      "How many events were generated per cycle",
-		},
-		labelsNames).With(labels)
-
-	prometheus.MustRegister(cyclesCounter, eventsCountGauge)
-
 	for {
 		go func() {
 			events := p.org.GenerateEvents()
 			p.publisher.Publish(events)
-			eventsCountGauge.Set(float64(len(events)))
-			cyclesCounter.Add(1)
+			eventsCountGauge.With(labels).Set(float64(len(events)))
+			cyclesCounter.With(labels).Add(1)
 		}()
 		time.Sleep(p.interval)
 	}

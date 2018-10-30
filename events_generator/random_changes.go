@@ -9,6 +9,31 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/melan/gen-events/misc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	case5CurrentMessages = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case5_current_messages",
+		},
+		[]string{"orgId"})
+	case5PastMessages = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case5_past_messages",
+		},
+		[]string{"orgId"})
+	case5SkippedMessages = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case5_skipped_messages",
+		},
+		[]string{"orgId"})
 )
 
 type randomChangeMessage struct {
@@ -28,6 +53,7 @@ func (m *randomChangeMessage) PartitionKey() string {
 }
 
 type case5 struct {
+	OrgId          string  `json:"org_id"`
 	Id             string  `json:"id"`
 	FirstName      string  `json:"first_name"`
 	LastName       string  `json:"last_name"`
@@ -36,7 +62,7 @@ type case5 struct {
 	DebugEvents    bool    `json:"debug_events"`
 }
 
-func generateCase5(n int, debugEvents bool) []device {
+func generateCase5(orgId string, n int, debugEvents bool) []device {
 	now := time.Now().Unix()
 	actualNumber := int(float32(n) / .036)
 	devices := make([]device, 0, actualNumber)
@@ -46,6 +72,7 @@ func generateCase5(n int, debugEvents bool) []device {
 		lastName := getName()
 
 		c5 := &case5{
+			OrgId:          orgId,
 			Id:             strconv.Itoa(i),
 			FirstName:      firstName,
 			LastName:       lastName,
@@ -60,8 +87,8 @@ func generateCase5(n int, debugEvents bool) []device {
 }
 
 func (c *case5) String() string {
-	return fmt.Sprintf("id: %s, fn: %s, ln: %s, rating: %.02f",
-		c.Id, c.FirstName, c.LastName, c.CurrentRating)
+	return fmt.Sprintf("orgid: %s, id: %s, fn: %s, ln: %s, rating: %.02f",
+		c.OrgId, c.Id, c.FirstName, c.LastName, c.CurrentRating)
 }
 
 func (c *case5) Generate() Event {
@@ -73,16 +100,18 @@ func (c *case5) Generate() Event {
 		if rand.Float32() < .77 { // 77% of the sent messages are from the present
 			// send message from present
 			if c.DebugEvents {
-				log.Printf("%d: c %s sends update from present", now, c.Id)
+				log.Printf("%d: c %s/%s sends update from present", now, c.OrgId, c.Id)
 			}
 			c.LastChangeData = now
 			c.CurrentRating = newRating
+			case5CurrentMessages.WithLabelValues(c.OrgId).Inc()
 		} else {
 			// send message from past
 			now = c.LastChangeData - rand.Int63n(1000)
 			if c.DebugEvents {
-				log.Printf("%d: c %s sends update from past", now, c.Id)
+				log.Printf("%d: c %s/%s sends update from past", now, c.OrgId, c.Id)
 			}
+			case5PastMessages.WithLabelValues(c.OrgId).Inc()
 		}
 
 		return &randomChangeMessage{
@@ -94,8 +123,9 @@ func (c *case5) Generate() Event {
 		}
 	} else {
 		if c.DebugEvents {
-			log.Printf("%d: c %s has no updates. skipping", now, c.Id)
+			log.Printf("%d: c %s/%s has no updates. skipping", now, c.OrgId, c.Id)
 		}
+		case5SkippedMessages.WithLabelValues(c.OrgId).Inc()
 		return nil
 	}
 }

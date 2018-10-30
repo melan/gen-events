@@ -3,6 +3,27 @@ package events_generator
 import (
 	"math/rand"
 	"strconv"
+
+	"github.com/melan/gen-events/misc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	numberOfDevices = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "number_of_devices",
+			Help:      "Number of devices generated for the use case in the org",
+		},
+		[]string{"orgId", "caseId"})
+
+	numberOfEvents = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "generated_events",
+		},
+		[]string{"orgId", "caseId"})
 )
 
 type Event interface {
@@ -36,11 +57,11 @@ const (
 type Case string
 
 const (
-	CaseOne   Case = "1"
-	CaseTwo   Case = "2"
-	CaseThree Case = "3"
-	CaseFour  Case = "4"
-	CaseFive  Case = "5"
+	CaseOne   Case = "heartbeat_message"
+	CaseTwo   Case = "structured_error_message"
+	CaseThree Case = "temperature_reading"
+	CaseFour  Case = "broken_temperature_reading"
+	CaseFive  Case = "data_change"
 )
 
 type Org struct {
@@ -73,24 +94,26 @@ func GenerateOrg(id string, size OrgSize, caseId Case, debugEvents bool) *Org {
 
 	switch caseId {
 	case CaseOne:
-		devices = generateCase1Devices(getNumberOfDevices(size), 1, debugEvents)
+		devices = generateCase1Devices(id, getNumberOfDevices(size), 1, debugEvents)
 		kinesisPrefix = "heartbeat_message"
 	case CaseTwo:
-		devices = generateCase2Devices(getNumberOfDevices(size), debugEvents)
+		devices = generateCase2Devices(id, getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "structured_error_message"
 	case CaseThree:
-		devices = generateCase3Devices(getNumberOfDevices(size), debugEvents)
+		devices = generateCase3Devices(id, getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "temperature_reading"
 	case CaseFour:
-		devices = generateCase4Devices(getNumberOfDevices(size), debugEvents)
+		devices = generateCase4Devices(id, getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "broken_temperature_reading"
 	case CaseFive:
-		devices = generateCase5(getNumberOfDevices(size), debugEvents)
+		devices = generateCase5(id, getNumberOfDevices(size), debugEvents)
 		kinesisPrefix = "data_change"
 	default:
 		devices = make([]device, 0)
 		kinesisPrefix = "unknown"
 	}
+
+	numberOfDevices.WithLabelValues(id, string(caseId)).Set(float64(len(devices)))
 
 	return &Org{
 		OrgId:         id,
@@ -110,6 +133,8 @@ func (org *Org) GenerateEvents() []Event {
 			events = append(events, event)
 		}
 	}
+
+	numberOfEvents.WithLabelValues(org.OrgId, string(org.CaseId)).Add(float64(len(events)))
 
 	return events
 }

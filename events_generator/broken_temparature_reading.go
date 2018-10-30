@@ -5,24 +5,43 @@ import (
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/melan/gen-events/misc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	case4BrokenDevice = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case4_broken_devices",
+		},
+		[]string{"orgId"})
+	case4RestoredDevice = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: misc.MetricsPrefix,
+			Name:      "case4_restored_devices",
+		},
+		[]string{"orgId"})
 )
 
 type case4Device struct {
-	case3Device
+	case34Device
 	IsBroken bool  `json:"is_broken"`
 	LastUp   int64 `json:"last_up"`
 }
 
-func generateCase4Devices(n int, debugEvents bool) []device {
+func generateCase4Devices(orgId string, n int, debugEvents bool) []device {
 	now := time.Now().Unix()
-	c3Devices := generateCase34Devices(n, debugEvents)
+	c3Devices := generateCase34Devices(CaseFour, orgId, n, debugEvents)
 	devices := make([]device, 0, n)
 
 	for _, d := range c3Devices {
 		c4d := &case4Device{
-			case3Device: *d,
-			IsBroken:    false,
-			LastUp:      now,
+			case34Device: *d,
+			IsBroken:     false,
+			LastUp:       now,
 		}
 
 		devices = append(devices, c4d)
@@ -33,7 +52,7 @@ func generateCase4Devices(n int, debugEvents bool) []device {
 
 func (d *case4Device) String() string {
 	return fmt.Sprintf("%s, broken: %t, lastUp: %d",
-		d.case3Device.String(), d.IsBroken, d.LastUp)
+		d.case34Device.String(), d.IsBroken, d.LastUp)
 }
 
 func (d *case4Device) Generate() Event {
@@ -41,24 +60,29 @@ func (d *case4Device) Generate() Event {
 
 	if d.IsBroken && (now-d.LastUp) < 6*60 { // device is broken still - it's down for 6 minutes
 		if d.DebugEvents {
-			log.Printf("%d: d %d is broken", now, d.DeviceId)
+			log.Printf("%d: d %s/%d is broken", now, d.OrgId, d.DeviceId)
 		}
+		case4BrokenDevice.WithLabelValues(d.OrgId).Inc()
 		return nil
 	} else if d.IsBroken {
-		d.IsBroken = false
 		if d.DebugEvents {
-			log.Printf("%d: d %d is back", now, d.DeviceId)
+			log.Printf("%d: d %s/%d is back", now, d.OrgId, d.DeviceId)
 		}
+		case4RestoredDevice.WithLabelValues(d.OrgId).Inc()
+		d.IsBroken = false
+		d.LastUp = now
+		return d.case34Device.Generate()
 	}
 
 	if rand.Float32() < .138 { // break the device
 		if d.DebugEvents {
-			log.Printf("%d: d %d is breaking", now, d.DeviceId)
+			log.Printf("%d: d %s/%d is breaking", now, d.OrgId, d.DeviceId)
 		}
 		d.IsBroken = true
+		case4BrokenDevice.WithLabelValues(d.OrgId).Inc()
 		return nil
 	} else {
 		d.LastUp = now
-		return d.case3Device.Generate()
+		return d.case34Device.Generate()
 	}
 }
