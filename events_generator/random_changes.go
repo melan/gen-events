@@ -71,7 +71,7 @@ func generateCase5(orgId string, n int, debugEvents bool) []device {
 		firstName := getName()
 		lastName := getName()
 
-		c5 := &case5{
+		device := &case5{
 			OrgId:          orgId,
 			Id:             strconv.Itoa(i),
 			FirstName:      firstName,
@@ -81,7 +81,8 @@ func generateCase5(orgId string, n int, debugEvents bool) []device {
 			DebugEvents:    debugEvents,
 		}
 
-		devices = append(devices, c5)
+		log.Printf("Device %s_%s/%d: %v", CaseFive, orgId, i, device)
+		devices = append(devices, device)
 	}
 	return devices
 }

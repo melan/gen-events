@@ -95,7 +95,7 @@ func generateCase2Devices(orgId string, n int, debugEvents bool) []device {
 			IsLongError:          false,
 			DebugEvents:          debugEvents,
 		}
-		log.Printf("Device: %s/%d: %v", orgId, i, device)
+		log.Printf("Device %s_%s/%d: %v", CaseTwo, orgId, i, device)
 
 		devices = append(devices, device)
 	}

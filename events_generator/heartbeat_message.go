@@ -113,7 +113,7 @@ func generateCase1Devices(orgId string, n int, stdDev float64, debugEvents bool)
 			Quality:             deviceQuality,
 			DebugEvents:         debugEvents,
 		}
-		log.Printf("Device %s/%d: %v", orgId, i, device)
+		log.Printf("Device %s_%s/%d: %v", CaseOne, orgId, i, device)
 
 		devices = append(devices, device)
 	}

@@ -99,7 +99,7 @@ func generateCase34Devices(caseName Case, orgId string, n int, debugEvents bool)
 			DebugEvents:        debugEvents,
 			Case:               caseName,
 		}
-		log.Printf("Device %s/%d: %v", orgId, i, device)
+		log.Printf("Device %s_%s/%d: %v", caseName, orgId, i, device)
 
 		devices = append(devices, device)
 	}

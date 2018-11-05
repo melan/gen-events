@@ -64,20 +64,17 @@ func main() {
 
 	// generate orgs
 	orgs := make([]*events_generator.Org, 0, cfg.orgsCount*len(cfg.caseIds))
-	var orgId = 1
 	for _, caseId := range cfg.caseIds {
 		if cfg.orgsCount == 1 {
-			org := events_generator.GenerateOrg(fmt.Sprintf("%d", orgId), cfg.orgSize, caseId, cfg.debugEvents,
+			org := events_generator.GenerateOrg("1", cfg.orgSize, caseId, cfg.debugEvents,
 				cfg.prefix)
 			orgs = append(orgs, org)
-			orgId++
 		} else {
-			for j := 0; j < cfg.orgsCount; j++ {
+			for j := 1; j <= cfg.orgsCount; j++ {
 				orgSize := events_generator.GuessOrgSize()
-				org := events_generator.GenerateOrg(fmt.Sprintf("%d", orgId), orgSize, caseId, cfg.debugEvents,
+				org := events_generator.GenerateOrg(fmt.Sprintf("%d", j), orgSize, caseId, cfg.debugEvents,
 					cfg.prefix)
 				orgs = append(orgs, org)
-				orgId++
 			}
 		}
 	}
@@ -118,7 +115,7 @@ func main() {
 				pump.Pump(ctx)
 			}(pipelineContext, pump, g)
 		} else {
-			log.Printf("skipping launch of the events generator because of dry run")
+			log.Printf("skipping launch of the events generator for %s because of dry run", org.StreamName())
 		}
 	}
 
