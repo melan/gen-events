@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/melan/gen-events/misc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	log "github.com/sirupsen/logrus"
 )
 
 var (

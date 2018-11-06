@@ -2,13 +2,13 @@ package events_generator
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"time"
 
 	"github.com/melan/gen-events/misc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -60,7 +60,7 @@ func (d *case4Device) Generate() Event {
 
 	if d.IsBroken && (now-d.LastUp) < 6*60 { // device is broken still - it's down for 6 minutes
 		if d.DebugEvents {
-			log.Printf("%d: d %s/%d is broken", now, d.OrgId, d.DeviceId)
+			log.Infof("%d: d %s/%d is broken", now, d.OrgId, d.DeviceId)
 		}
 		case4BrokenDevice.WithLabelValues(d.OrgId).Inc()
 		return nil

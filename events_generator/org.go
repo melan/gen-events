@@ -84,6 +84,8 @@ func getNumberOfDevices(orgSize OrgSize) int {
 		return 75000
 	case LargeOrg:
 		return 1e6
+	default:
+		return getNumberOfDevices(TinyOrg)
 	}
 
 	return 0

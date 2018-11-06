@@ -15,6 +15,11 @@ type EventsPublisher interface {
 
 type PublisherFactory func(org *events_generator.Org) EventsPublisher
 
+func CreateA8mKinesisPublisherFactory(client *kinesis.Kinesis, tags map[string]*string) PublisherFactory {
+	return func(org *events_generator.Org) EventsPublisher {
+		return NewA8mKinesisPublisher(client, org.StreamName(), org.NumberOfStreamShards(), tags)
+	}
+}
 func CreateKinesisPublisherFactory(client *kinesis.Kinesis, tags map[string]*string) PublisherFactory {
 	return func(org *events_generator.Org) EventsPublisher {
 		return NewKinesisEventsPublisher(client, org.StreamName(), org.NumberOfStreamShards(), tags)

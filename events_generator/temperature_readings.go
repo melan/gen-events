@@ -3,7 +3,6 @@ package events_generator
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/melan/gen-events/misc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -99,7 +99,7 @@ func generateCase34Devices(caseName Case, orgId string, n int, debugEvents bool)
 			DebugEvents:        debugEvents,
 			Case:               caseName,
 		}
-		log.Printf("Device %s_%s/%d: %v", caseName, orgId, i, device)
+		log.Infof("Device %s_%s/%d: %v", caseName, orgId, i, device)
 
 		devices = append(devices, device)
 	}

@@ -2,12 +2,12 @@ package output
 
 import (
 	"bytes"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/melan/gen-events/events_generator"
+	log "github.com/sirupsen/logrus"
 )
 
 var newLineBytes = []byte("\n")

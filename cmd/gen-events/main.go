@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,24 +19,29 @@ import (
 	"github.com/melan/gen-events/pipeline"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 type Output string
 
 const (
-	KinesisOutput = "kinesis"
-	FileOutput    = "file"
+	A8mKinesisOutput = "a8m_kinesis"
+	KinesisOutput    = "kinesis"
+	FileOutput       = "file"
 )
 
 type config struct {
 	configFile    string
 	caseIds       []events_generator.Case
 	orgSize       events_generator.OrgSize
+	orgSizeSet    bool
 	orgsCount     int
+	startOrgId    int
 	listenAddr    string
 	cleanupOnExit bool
 	debugEvents   bool
+	debug         bool
 	output        Output
 	outDir        string
 	tags          map[string]*string
@@ -47,52 +51,70 @@ type config struct {
 }
 
 func main() {
+	log.SetOutput(os.Stdout)
+
 	cfg := parseArgs()
-	log.Printf("Initializing orgs with the following configuration: %#v", cfg)
+	log.Infof("Initializing orgs with the following configuration: %#v", cfg)
+
+	if cfg.debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	var publisherFactory output.PublisherFactory
-	if cfg.output == KinesisOutput {
+	switch cfg.output {
+	case KinesisOutput:
 		sess, err := session.NewSession()
 		if err != nil {
-			log.Panicf("can't create new AWS session. Error: %s", err.Error())
+			log.WithError(err).Panic("can't create new AWS session")
 		}
 		kinesisClient := kinesis.New(sess)
 		publisherFactory = output.CreateKinesisPublisherFactory(kinesisClient, cfg.tags)
-	} else {
+	case A8mKinesisOutput:
+		sess, err := session.NewSession()
+		if err != nil {
+			log.WithError(err).Panic("can't create new AWS session")
+		}
+		kinesisClient := kinesis.New(sess)
+		publisherFactory = output.CreateA8mKinesisPublisherFactory(kinesisClient, cfg.tags)
+	default:
 		publisherFactory = output.CreateFilePublisherFactory(cfg.outDir)
 	}
 
 	// generate orgs
 	orgs := make([]*events_generator.Org, 0, cfg.orgsCount*len(cfg.caseIds))
+
+	// Define orgSize generator
+	var orgSizeGenerator func() events_generator.OrgSize
+	if cfg.orgSizeSet {
+		orgSizeGenerator = func() events_generator.OrgSize { return cfg.orgSize }
+	} else {
+		orgSizeGenerator = events_generator.GuessOrgSize
+	}
+
 	for _, caseId := range cfg.caseIds {
-		if cfg.orgsCount == 1 {
-			org := events_generator.GenerateOrg("1", cfg.orgSize, caseId, cfg.debugEvents,
+		for j := cfg.startOrgId; j <= cfg.orgsCount+cfg.startOrgId; j++ {
+			org := events_generator.GenerateOrg(fmt.Sprintf("%d", j), orgSizeGenerator(), caseId, cfg.debugEvents,
 				cfg.prefix)
 			orgs = append(orgs, org)
-		} else {
-			for j := 1; j <= cfg.orgsCount; j++ {
-				orgSize := events_generator.GuessOrgSize()
-				org := events_generator.GenerateOrg(fmt.Sprintf("%d", j), orgSize, caseId, cfg.debugEvents,
-					cfg.prefix)
-				orgs = append(orgs, org)
-			}
 		}
 	}
 
 	mainContext, mainCancel := context.WithCancel(context.Background())
 
-	log.Printf("creating events generators for %d orgs", len(orgs))
+	log.Infof("creating events generators for %d orgs", len(orgs))
 	g := &sync.WaitGroup{}
 	cleanups := make([]pipeline.CleanupFunc, 0, len(orgs))
 	abort := false
 
 	for _, org := range orgs {
 		if !cfg.dryRun {
-			log.Printf("launching events generator for %s of org %s", org.StreamName(), org.OrgId)
-			log.Printf("creating publisher for %s", org.OrgId)
+			log.Infof("launching events generator for %s of org %s", org.StreamName(), org.OrgId)
+			log.Infof("creating publisher for %s", org.OrgId)
 			publisher := publisherFactory(org)
 			if err := publisher.Init(); err != nil {
-				log.Printf("can't provision publisher because of an error %s", err.Error())
+				log.WithError(err).Error("can't provision publisher because of an error")
 				abort = true
 				mainCancel()
 				break
@@ -100,13 +122,13 @@ func main() {
 				cleanups = append(cleanups, publisher.Cleanup)
 			}
 
-			log.Printf("creating generator for %s", org.OrgId)
+			log.Infof("creating generator for %s", org.OrgId)
 			pump := pipeline.NewPipeline(publisher, org, time.Duration(cfg.interval)*time.Second)
 			pipelineContext, _ := context.WithCancel(mainContext)
 			go func(ctx context.Context, pump *pipeline.Pipeline, g *sync.WaitGroup) {
 				g.Add(1)
 				if cfg.cleanupOnExit {
-					log.Printf("adding cleanup for %s", pump.OrgId)
+					log.Infof("adding cleanup for %s", pump.OrgId)
 					defer pump.Cleanup(g)
 				} else {
 					defer g.Done()
@@ -115,17 +137,17 @@ func main() {
 				pump.Pump(ctx)
 			}(pipelineContext, pump, g)
 		} else {
-			log.Printf("skipping launch of the events generator for %s because of dry run", org.StreamName())
+			log.Infof("skipping launch of the events generator for %s because of dry run", org.StreamName())
 		}
 	}
 
 	if abort {
-		log.Println("initialization was aborted. Exiting")
+		log.Infof("initialization was aborted. Exiting")
 		g.Wait()
 		os.Exit(1)
 	}
 
-	log.Printf("enabling metrics endpoint")
+	log.Infof("enabling metrics endpoint")
 	http.Handle("/metrics", promhttp.Handler())
 	g.Add(1)
 
@@ -134,7 +156,7 @@ func main() {
 
 	go func(sigs chan os.Signal, cancel context.CancelFunc) {
 		<-sigs
-		log.Printf("received terminate signal. stopping the party")
+		log.Info("received terminate signal. stopping the party")
 		cancel()
 	}(sigs, mainCancel)
 
@@ -147,14 +169,14 @@ func main() {
 	go func(ctx context.Context, server *http.Server, g *sync.WaitGroup) {
 		defer g.Done()
 		<-ctx.Done()
-		log.Printf("shutting down http server")
+		log.Info("shutting down http server")
 		server.Shutdown(context.Background())
 	}(httpContext, server, g)
 
-	log.Print("prime time")
+	log.Info("prime time")
 	server.ListenAndServe()
 	g.Wait()
-	log.Println("bye bye")
+	log.Info("bye bye")
 }
 
 func parseArgs() config {
@@ -162,9 +184,6 @@ func parseArgs() config {
 
 	a := kingpin.New(filepath.Base(os.Args[0]), "Generator of platform events")
 	a.HelpFlag.Short('h')
-
-	//a.Flag("config-file", "Configuration file path.").
-	//	Default("gen-platform-events.yml").StringVar(&cfg.configFile)
 
 	a.Flag("prefix", "This prefix will be added to all topics and files generated by this tool").
 		Default("default").StringVar(&cfg.prefix)
@@ -175,11 +194,17 @@ func parseArgs() config {
 	a.Flag("orgs-count", "Number of different Orgs to generate").
 		Default("1").IntVar(&cfg.orgsCount)
 
+	a.Flag("start-org-id", "Begin orgId from this position").
+		Default("1").IntVar(&cfg.startOrgId)
+
 	a.Flag("cleanup", "Cleanup Kinesis streams on exit").
 		Default("false").BoolVar(&cfg.cleanupOnExit)
 
 	a.Flag("debug-events", "Output additional debug info from events generators").
 		Default("false").BoolVar(&cfg.debugEvents)
+
+	a.Flag("debug", "Output additional debug info").
+		Default("false").BoolVar(&cfg.debug)
 
 	a.Flag("dry-run", "Parse parameters and really do nothing else").
 		Default("false").BoolVar(&cfg.dryRun)
@@ -191,6 +216,7 @@ func parseArgs() config {
 	a.Flag("output", "Destination for output").
 		Default(string(KinesisOutput)).
 		EnumVar(&outputDestination,
+			string(A8mKinesisOutput),
 			string(KinesisOutput),
 			string(FileOutput))
 
@@ -209,11 +235,8 @@ func parseArgs() config {
 			string(events_generator.CaseFive),
 		)
 
-	var orgSize string
 	a.Flag("org-size", "Size of the Org").
-		Default(string(events_generator.TinyOrg)).
-		EnumVar(&orgSize,
-			string(events_generator.TinyOrg),
+		Enum(string(events_generator.TinyOrg),
 			string(events_generator.SmallOrg),
 			string(events_generator.MediumOrg),
 			string(events_generator.LargeOrg))
@@ -239,12 +262,15 @@ func parseArgs() config {
 			cfg.caseIds = append(cfg.caseIds, k)
 		}
 	} else {
-		log.Printf("No cases were defined, will go with the 1st one")
+		log.Info("No cases were defined, will go with the 1st one")
 		cfg.caseIds = []events_generator.Case{events_generator.CaseOne}
 	}
 
-	if orgSize != "" {
-		cfg.orgSize = events_generator.OrgSize(orgSize)
+	if orgSize := a.GetFlag("org-size").String(); orgSize != nil && *orgSize != "" {
+		cfg.orgSize = events_generator.OrgSize(*orgSize)
+		cfg.orgSizeSet = true
+	} else {
+		cfg.orgSizeSet = false
 	}
 
 	if outputDestination != "" {
@@ -255,14 +281,14 @@ func parseArgs() config {
 		if outDir != "" {
 			absPath, err := filepath.Abs(outDir)
 			if err != nil {
-				log.Fatalf("can't resolve path to output directory %s. Error: %s", outDir, err)
+				log.WithError(err).Fatalf("can't resolve path to output directory %s", outDir)
 			} else {
 				cfg.outDir = absPath
 			}
 		} else {
 			absPath, err := os.Getwd()
 			if err != nil {
-				log.Fatalf("can't resolve current work directory and --output-path is unset. Error: %s", err)
+				log.WithError(err).Fatal("can't resolve current work directory and --output-path is unset")
 			} else {
 				cfg.outDir = absPath
 			}
@@ -274,7 +300,7 @@ func parseArgs() config {
 		for _, tagPair := range tagsPairs {
 			split := strings.Split(tagPair, "=")
 			if len(split) != 2 {
-				log.Printf("can't parse tag %s. Skipping", tagPair)
+				log.Infof("can't parse tag %s. Skipping", tagPair)
 				continue
 			}
 
