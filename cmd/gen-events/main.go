@@ -235,7 +235,7 @@ func parseArgs() config {
 			string(events_generator.CaseFive),
 		)
 
-	a.Flag("org-size", "Size of the Org").
+	orgSize := a.Flag("org-size", "Size of the Org").
 		Enum(string(events_generator.TinyOrg),
 			string(events_generator.SmallOrg),
 			string(events_generator.MediumOrg),
@@ -266,7 +266,7 @@ func parseArgs() config {
 		cfg.caseIds = []events_generator.Case{events_generator.CaseOne}
 	}
 
-	if orgSize := a.GetFlag("org-size").String(); orgSize != nil && *orgSize != "" {
+	if orgSize != nil && *orgSize != "" {
 		cfg.orgSize = events_generator.OrgSize(*orgSize)
 		cfg.orgSizeSet = true
 	} else {
