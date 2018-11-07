@@ -94,7 +94,7 @@ func main() {
 	}
 
 	for _, caseId := range cfg.caseIds {
-		for j := cfg.startOrgId; j <= cfg.orgsCount+cfg.startOrgId; j++ {
+		for j := cfg.startOrgId; j < cfg.orgsCount+cfg.startOrgId; j++ {
 			org := events_generator.GenerateOrg(fmt.Sprintf("%d", j), orgSizeGenerator(), caseId, cfg.debugEvents,
 				cfg.prefix)
 			orgs = append(orgs, org)
